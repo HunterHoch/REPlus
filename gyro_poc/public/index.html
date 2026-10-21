@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Gyro camera test</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<header><strong>Gyro camera test</strong><span id="status" role="status">Connecting…</span></header>
+<main>
+  <section class="preview">
+    <div id="game-preview" hidden><img id="game-frame" alt="Live game camera" hidden><span id="stream-status" role="status">Press Stream to see the game camera.</span></div>
+    <div id="viewport"><span class="crosshair" aria-hidden="true"></span><canvas id="path-map" width="160" height="110" aria-label="Camera path overview"></canvas><span id="time">0.0 / 18.0 s</span></div>
+    <div class="controls"><label>Target <select id="target"><option value="browser">Browser exercise</option><option value="game">FiveM / REPlus</option></select></label><button id="enable" hidden>Enable gyro</button><button id="game-live" hidden>Live control</button><button id="play" disabled>Record pass</button><button id="restart" disabled>Restart</button><button id="center" disabled>Align heading</button><button id="watch" disabled>Watch take</button><button id="download" disabled>Download take</button></div>
+    <div id="stream-controls" class="controls" hidden><button id="stream">Stream</button><button id="horizontal" aria-pressed="true">Horizontal</button><button id="vertical" aria-pressed="false">Vertical</button><button id="bake">Convert to markers (optional)</button><button id="undo-bake">Undo marker conversion</button></div>
+    <button id="take-control" hidden>Take game control</button>
+    <p id="take-status" role="status">No take recorded.</p>
+    <p id="hint">Scan the QR, enable gyro, then Record pass. Keep the box centered. Stop & save, then Watch take.</p>
+  </section>
+  <aside id="pair" hidden><img id="qr" width="200" height="200" alt="Scan to connect your phone"><p>Scan with your phone camera.</p></aside>
+</main>
+<script type="module" src="/app.js"></script>
+</body></html>

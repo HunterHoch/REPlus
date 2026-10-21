@@ -7,6 +7,8 @@
 
 #include "main.h"
 #include "capture/videoout.h"
+#include "capture/portrait.h"
+#include "replay/gyro.h"
 
 #include "utils/paths.h"
 
@@ -399,6 +401,10 @@ namespace videoout
 					"video: RenderVideoArgs and RenderVideoExt are NOT in use - the preset supplies both. Blank RenderVideoPreset to use them.");
 		}
 
+		if(gyro::portraitForExport()){
+			args=portraitArgs(args);
+			logger::write("info","video: rotating portrait pass clockwise to upright pixels");
+		}
 		snprintf(s_outPath, sizeof(s_outPath), "%s\\video.%s", folder, ext.c_str());
 
 		// stdin pipe. Only the READ end is inheritable: ffmpeg needs that one,

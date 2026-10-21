@@ -13,6 +13,8 @@
 #include "capture/videoout.h"
 #include "capture/audioout.h"
 #include "capture/dofsession.h"
+#include "replay/gyro_bake.h"
+#include "replay/gyro.h"
 #include "game/signatures.h"
 
 #include <cstdio>
@@ -1490,6 +1492,10 @@ namespace render
 		// flag could only ever be true and the clip walk is unconditional.
 		bool begin(float startMs, int frames, bool openEnded, const char** reason)
 		{
+			if(gyro::bakeActive() || gyro::recording()){
+				if(reason)*reason="wait for the gyro marker bake to finish before exporting";
+				return false;
+			}
 			static const char* kNoFolder = "could not create the output folder";
 
 			// The frame pass of a two-pass render writes into the folder the
@@ -1865,6 +1871,7 @@ namespace render
 				"not fully loaded for playback; open it in the editor first, then Export.",
 				clips, totalMs);
 
+		if (!gyro::prepareExport(reason)) return false;
 		if (!begin(now, frames, openEnded, reason)) return false;
 		s_fromExport = true;
 

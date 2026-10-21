@@ -320,7 +320,7 @@ if(ENABLE_LOGS)
 endif()
 
 target_link_directories(RockstarEditorPlus PUBLIC "${CMAKE_BINARY_DIR}/LIB")
-target_link_libraries(RockstarEditorPlus version.lib shell32.lib debug minhook.x64d.lib optimized minhook.x64.lib)
+target_link_libraries(RockstarEditorPlus version.lib shell32.lib ws2_32.lib debug minhook.x64d.lib optimized minhook.x64.lib)
 
 # =============================================================================
 #  Preset Maker - a small GUI for authoring encoder presets

@@ -1,0 +1,14 @@
+{
+  "name": "gyro-poc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node start.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "three": "^0.186.1",
+    "ws": "^8.18.3"
+  }
+}

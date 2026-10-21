@@ -6,6 +6,8 @@
 // Software Foundation. See the LICENSE file for details.
 
 #include "main.h"
+#include "replay/gyro.h"
+#include "replay/blendprofile.h"
 #include "ui/menu.h"
 #include "game/signatures.h"
 #include "replay/marker.h"
@@ -171,7 +173,7 @@ namespace menu
 		// is the one group here that changes what the shot LOOKS like rather
 		// than what the camera is allowed to do.
 		enum { PAGE_CLOSED = 0, PAGE_CURVE, PAGE_LIMITS, PAGE_SCENE,
-		       PAGE_LIGHTS, PAGE_COUNT };
+		       PAGE_LIGHTS, PAGE_GYRO, PAGE_COUNT };
 		int  g_page         = PAGE_CLOSED;
 		bool g_stockShakeSet = false; // marker has a GAME shake, so the camera
 		                              // menu will also draw intensity + speed
@@ -184,6 +186,7 @@ namespace menu
 
 		using rsettings::Param;
 		using rsettings::MarkerSettings;
+		void* currentMarker();
 
 		// --- logical rows -----------------------------------------------------
 		enum Row
@@ -224,6 +227,9 @@ namespace menu
 			ROW_L_SHADOWQ, ROW_L_VOLUMETRIC, ROW_L_NOSPEC,
 			ROW_L_VIS, ROW_L_REFL, ROW_L_CORONA, ROW_L_BLACKOUT, ROW_L_INTSHADOW,
 			ROW_L_PLACE, ROW_L_DELETE,
+			ROW_GYRO_LIVE, ROW_GYRO_ALIGN, ROW_GYRO_RECORD, ROW_GYRO_STOP,
+			ROW_GYRO_REPLAY, ROW_GYRO_BAKE, ROW_GYRO_UNDO, ROW_BLEND_ALL,
+			ROW_BLEND_MODE, ROW_BLEND_EASE,
 			ROW_NUM_FIRST,                 // everything below is numeric
 			ROW_INTENSITY = ROW_NUM_FIRST, ROW_FREQ_MUL, ROW_VARIATION,
 			ROW_SPEED_AMP, ROW_SPEED_FREQ,
@@ -269,7 +275,7 @@ namespace menu
 		// shake IS, then how it reacts to movement.
 		enum Group { GRP_HIDDEN = 0, GRP_SPLINE, GRP_FOCUS, GRP_SHAKE, GRP_MOTION,
 		             GRP_SWAY, GRP_JITTER, GRP_DETAIL, GRP_AXES,
-		             GRP_MAX };
+		             GRP_BLEND, GRP_MAX };
 
 		// Which populate we are currently inside. The two menus are separate
 		// screens - you are never in both - so one set of row state serves both,
@@ -280,6 +286,8 @@ namespace menu
 		                               // is on screen now - drives the refresh
 
 		int s_group = GRP_SPLINE;
+		bool s_blendArmed = false;
+		int s_blendedCount = -1;
 		// How many items the editor's Scaleform column actually draws. Measured,
 		// not documented: a menu with 17 options rendered exactly 16 and the
 		// seventeenth was gone with no error on either side.
@@ -319,7 +327,7 @@ namespace menu
 		// help line, which is where a row with no value column has to put it.
 		inline bool isActionRow(int row)
 		{
-			return row == ROW_APPLY_ALL || row == ROW_L_PLACE ||
+			return (row >= ROW_GYRO_LIVE && row <= ROW_BLEND_ALL) || row == ROW_APPLY_ALL || row == ROW_L_PLACE ||
 			       row == ROW_L_DELETE;
 		}
 
@@ -676,7 +684,17 @@ namespace menu
 					}
 					return;
 				}
-				if (g_page == PAGE_CURVE)
+				if (g_page == PAGE_GYRO)
+				{
+					s_rows[s_shown++] = ROW_GYRO_LIVE;
+					s_rows[s_shown++] = ROW_GYRO_ALIGN;
+					s_rows[s_shown++] = ROW_GYRO_RECORD;
+					s_rows[s_shown++] = ROW_GYRO_STOP;
+					s_rows[s_shown++] = ROW_GYRO_REPLAY;
+					s_rows[s_shown++] = ROW_GYRO_BAKE;
+					s_rows[s_shown++] = ROW_GYRO_UNDO;
+				}
+				else if (g_page == PAGE_CURVE)
 				{
 					s_rows[s_shown++] = ROW_G_PATH;
 					s_rows[s_shown++] = ROW_G_ROT;
@@ -717,11 +735,18 @@ namespace menu
 			// game's Drunk shake and see nothing happen.
 			// Focus sits above the gate on purpose: it applies to every marker, with
 			// or without our shake preset, and with or without a camera transition.
-			if (!g_ourShakeHere && s_group > GRP_FOCUS) s_group = GRP_FOCUS;
+			if (!g_ourShakeHere && s_group >= GRP_SHAKE && s_group <= GRP_AXES) s_group = GRP_BLEND;
 
 			s_rows[s_shown++] = ROW_GROUP;
 			switch (s_group)
 			{
+			case GRP_BLEND:
+				s_rows[s_shown++] = ROW_BLEND_MODE;
+				s_rows[s_shown++] = ROW_BLEND_EASE;
+				s_rows[s_shown++] = ROW_PATH;
+				s_rows[s_shown++] = ROW_ROT;
+				s_rows[s_shown++] = ROW_BLEND_ALL;
+				break;
 			// Per-marker focus. It lived on the top-level marker menu, where the
 			// Marker row moves the selection out from under an edit - the values
 			// were written against one marker and read back against another, which
@@ -740,6 +765,7 @@ namespace menu
 				s_rows[s_shown++] = ROW_EASE_OUT;
 				s_rows[s_shown++] = ROW_ROT;
 				s_rows[s_shown++] = ROW_STEP;
+				s_rows[s_shown++] = ROW_BLEND_ALL;
 				break;
 			case GRP_SHAKE:
 				s_rows[s_shown++] = ROW_SHAKE_MODE;
@@ -832,6 +858,16 @@ namespace menu
 			case ROW_S_WETNESS: return "Wetness";
 			case ROW_S_TIMECYCLE: return "Timecycle";
 			case ROW_APPLY_ALL: return "Apply Shake to All";
+			case ROW_GYRO_LIVE: return "Live Phone Control";
+			case ROW_GYRO_ALIGN: return "Align Phone Heading";
+			case ROW_GYRO_RECORD: return "Record Gyro Pass";
+			case ROW_GYRO_STOP: return "Stop Gyro / Save Take";
+			case ROW_GYRO_REPLAY: return "Replay Last Gyro Take";
+			case ROW_GYRO_BAKE: return "Bake Gyro Take to Markers";
+			case ROW_GYRO_UNDO: return "Undo Last Gyro Bake";
+			case ROW_BLEND_ALL: return "Apply Blending to All";
+			case ROW_BLEND_MODE: return "Blend Mode";
+			case ROW_BLEND_EASE: return "Camera Easing";
 
 			// --- scene lights ---
 			case ROW_L_SELECT:    return "Light";
@@ -894,6 +930,7 @@ namespace menu
 				case GRP_JITTER: return "Shake: Jitter";
 				case GRP_DETAIL: return "Shake: Detail";
 				case GRP_AXES:   return "Shake: Axes";
+				case GRP_BLEND:  return "Blend";
 				default:         return "Closed";
 				}
 			}
@@ -904,6 +941,12 @@ namespace menu
 			// for that, both to addRow() and to the in-place refresh. Their
 			// armed/done state lives in the help line instead; see rowHelp().
 			if (isActionRow(row)) return nullptr;
+			if (row == ROW_BLEND_MODE) {
+				const void* marker=currentMarker();
+				const int type=marker?rmarker::blendType(marker):0;
+				return type==2?"Smooth":type==1?"Linear":"None";
+			}
+			if (row == ROW_BLEND_EASE) return currentMarker() && rmarker::easing(currentMarker())?"On":"Off";
 			// Simple mode reads its default from the ini when the marker has no
 			// override, exactly like every other row - so what is displayed is
 			// what will actually run, not the sentinel behind it.
@@ -1057,6 +1100,7 @@ namespace menu
 				     : g_page == PAGE_LIMITS ? "Limits"
 				     : g_page == PAGE_SCENE  ? "Scene"
 				     : g_page == PAGE_LIGHTS ? "Scene Lights"
+				     : g_page == PAGE_GYRO ? "Gyro Pass"
 				                             : "Closed";
 			if (row == ROW_G_PATH)
 				return (Config::get().splinePosition ? "On" : "Off");
@@ -1136,6 +1180,8 @@ namespace menu
 			case ROW_STEP:  return kStepCount;
 			case ROW_PATH:
 			case ROW_ROT:   return 3;
+			case ROW_BLEND_MODE: return 3;
+			case ROW_BLEND_EASE: return 2;
 			case ROW_COLLISION:
 			case ROW_DISTANCE:
 			case ROW_STREAMFOCUS:
@@ -1358,6 +1404,19 @@ namespace menu
 			case ROW_AX_ROLL:    return "Weight on roll. Moves the corners rather than the centre.";
 			case ROW_AX_YAW:     return "Weight on yaw. 0 disables that axis.";
 
+			case ROW_GYRO_LIVE: return "Connect the phone bridge in FiveM mode first. Live aim replaces rotation only; the original position path stays in control. Automatically aligns heading.";
+			case ROW_GYRO_ALIGN: return "Align phone left/right heading to the current camera. Gravity tilt and roll are preserved. Point toward the horizon when aligning.";
+			case ROW_GYRO_RECORD: return "Rewind the current clip and start recording/playback. Automatically stops and saves at the clip end. Samples use replay time; existing markers stay untouched.";
+			case ROW_GYRO_STOP: return "Release phone/take control and save the recording. A stale phone, clip change or recording seek also releases control.";
+			case ROW_GYRO_REPLAY: return "Seek to the last matching take's start and play its recorded rotation over the current path. Stops at the take end. Matching saved CSVs load after a restart.";
+			case ROW_GYRO_BAKE: return "Bake the raw recorded pose into ordinary markers. Uses every sample the editor permits. Progress and limit counts appear on the phone/log. No smoothing filter is added.";
+			case ROW_GYRO_UNDO: return "Restore the pre-bake marker snapshot. Only available for this session's unchanged last bake; a disk backup also remains in GyroTakes.";
+			case ROW_BLEND_MODE: return "This marker's stock None, Linear or Smooth blend mode. Controls how it transitions toward the following camera marker.";
+			case ROW_BLEND_EASE: return "This marker's stock camera-easing flag. Spline Ease In/Out are separate controls on the Spline page.";
+			case ROW_BLEND_ALL:
+				if (s_blendArmed) return "Press again to copy blend mode, camera easing, spline path/rotation, tension and both spline easing values to all free-camera markers in this clip.";
+				if (s_blendedCount>=0) { snprintf(buf,sizeof(buf),"Copied complete marker blend settings to %d camera markers. Shake, focus and other channels were preserved.",s_blendedCount);return buf; }
+				return "Copy this marker's complete blend/spline settings to all free-camera markers in this clip. Global Curve settings already apply to all markers. Press twice.";
 			case ROW_APPLY_ALL:
 				if (s_applyArmed)
 					return "Press again to copy THIS marker's shake onto every marker in "
@@ -1565,6 +1624,16 @@ namespace menu
 		// --- editing -----------------------------------------------------------
 		void adjust(int row, int delta, MarkerSettings& s)
 		{
+			if (row == ROW_BLEND_MODE || row == ROW_BLEND_EASE) {
+				void* marker=currentMarker();if(!marker)return;
+				if(row==ROW_BLEND_MODE) {
+					int type=(int)rmarker::blendType(marker)+delta;if(type<0)type=0;if(type>2)type=2;
+					rmarker::setField<uint8_t>(marker,rmarker::OFF_CameraBlendType,(uint8_t)type,rmarker::BIT_CameraBlendType);
+				} else rmarker::setField<uint8_t>(marker,rmarker::OFF_CameraEasing,delta>0?1:0,rmarker::BIT_CameraEasing);
+				void* storage=game::markerStorage();
+				for(int i=0;storage && i<rstorage::markerCount(storage);++i)if(rstorage::tryGetMarker(storage,i)==marker){rstorage::blendTypeUpdated(storage,i);break;}
+				return;
+			}
 			// --- scene lights ---
 			if (isLightRow(row))
 			{
@@ -1741,6 +1810,7 @@ namespace menu
 			if (row == ROW_GROUP)
 			{
 				s_group += delta;
+				if (!g_ourShakeHere && s_group>=GRP_SHAKE && s_group<=GRP_AXES) s_group=delta>0?GRP_BLEND:GRP_FOCUS;
 				if (s_group < 0) s_group = 0;
 				if (s_group >= GRP_MAX) s_group = GRP_MAX - 1;
 				Config::get().writeInt("MenuGroup", s_group);
@@ -2531,6 +2601,7 @@ namespace menu
 		inline bool rowChangesLayout(int row)
 		{
 			return row == ROW_GROUP        // switches the whole group
+			    || row == ROW_BLEND_MODE   // spline controls depend on having a blend
 			    || row == ROW_G_HEADER     // pages the global block
 			    || row == ROW_G_PROFILE    // decides whether Curve Shape is greyed
 			    // All three decide whether a row BELOW them is greyed, and a
@@ -2736,6 +2807,44 @@ namespace menu
 				// Fall through for left/right: adjust() handles those.
 			}
 
+			// Gyro actions are on the top-level Rockstar Editor+ / Gyro Pass page.
+			const int gyroRow = logicalAt(focus);
+			if (gyroRow != ROW_BLEND_ALL) s_blendArmed = false;
+			if (ours && (gyroRow == ROW_BLEND_ALL || (g_shownKind == MENU_MARKER && gyroRow >= ROW_GYRO_LIVE && gyroRow <= ROW_GYRO_UNDO)))
+			{
+				if (navCode == gsig::NAV_ACCEPT)
+				{
+					if (gyroRow == ROW_BLEND_ALL)
+					{
+						if (!s_blendArmed) { s_blendArmed = true;s_blendedCount=-1; refreshHelpForFocus(); return; }
+						s_blendArmed = false;s_blendedCount=0;
+						void* source = currentMarker(); void* storage = game::markerStorage();
+						if (source && storage)
+						{
+							const auto blend = rmarker::blendType(source); const bool ease = rmarker::easing(source);
+							const MarkerSettings profile=rsettings::get(rmarker::timeMs(source));
+							for (int i=0;i<rstorage::markerCount(storage);++i)
+							{
+								void* m = rstorage::tryGetMarker(storage,i);
+								if (!m || rmarker::markerType(m)==rmarker::MARKERTYPE_ANCHOR || rmarker::camType(m)!=rmarker::CAM_FREE) continue;
+								rmarker::setField<uint8_t>(m,rmarker::OFF_CameraBlendType,blend,rmarker::BIT_CameraBlendType);
+								rmarker::setField<uint8_t>(m,rmarker::OFF_CameraEasing,ease?1:0,rmarker::BIT_CameraEasing);
+								MarkerSettings target=rsettings::get(rmarker::timeMs(m));blendprofile::copy(profile,target);rsettings::set(rmarker::timeMs(m),target);++s_blendedCount;
+								rstorage::blendTypeUpdated(storage,i);
+							}
+							logger::write("info","gyro: applied blend %u and easing %d to current clip",(unsigned)blend,(int)ease);
+							rsettings::save();refreshHelpForFocus();
+						}
+					}
+					else
+					{
+						const unsigned commands[] = {1,3,4,5,6,7,8};
+						gyro::command(commands[gyroRow-ROW_GYRO_LIVE]);
+					}
+					return;
+				}
+				if (isToggle) { s_blendArmed=false; return; }
+			}
 			if (ours && g_shownKind == MENU_CAMERA &&
 			    logicalAt(focus) == ROW_APPLY_ALL)
 			{

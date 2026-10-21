@@ -223,6 +223,7 @@ namespace fxcapture
 	};
 	HostState hostState();
 	bool lastDone();       // addon has acknowledged the most recent request
+	bool lastSucceeded(); // acknowledged capture was written successfully
 
 	// The addon's per-present counter. The render loop uses this as its frame
 	// clock: we have no ScriptHookV and therefore no WAIT(0), so "a frame went

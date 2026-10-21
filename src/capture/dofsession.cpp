@@ -1020,7 +1020,12 @@ namespace dofsession
 
 	void applyToFrame(void* self)
 	{
-		if (!s_running || !self) return;
+		if (!self) return;
+		// pump() runs before spline/gyro/shake. Refresh the add-on's camera
+		// data with this shutter sample's final body pose before moving onto
+		// the aperture, rather than publishing only the stock camera basis.
+		publishCameraData(s_running);
+		if (!s_running) return;
 
 		auto* b = (uint8_t*)self;
 		const float* ax = (const float*)(b + rdirector::OFF_FrameMatrixA); // right

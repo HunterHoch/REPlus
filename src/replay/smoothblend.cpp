@@ -12,6 +12,7 @@
 #include "replay/marker.h"
 #include "replay/spline.h"
 #include "replay/quat.h"
+#include "replay/gyro.h"
 #include "replay/freecam.h"
 #include "replay/settings.h"
 #include "ui/menu.h"
@@ -1711,6 +1712,9 @@ namespace smoothblend
 		{
 			applySpline(self);
 
+			// Keep the authored position path; phone/take controls orientation only.
+			gyro::apply(self);
+
 			// Before the shake, so what the editor saves is the curve's pose
 			// rather than the curve plus this frame's random lean.
 			mirrorAuthoringFrame(self);
@@ -1734,6 +1738,7 @@ namespace smoothblend
 			// After every writer, so the position it prints is the one that
 			// reaches the viewport - not the one the spline proposed.
 			traceFrame(self);
+			gyro::streamTick();
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER) {}
 	}

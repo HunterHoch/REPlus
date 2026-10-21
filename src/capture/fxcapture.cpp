@@ -324,6 +324,7 @@ namespace fxcapture
 		return s_cached;
 	}
 	bool lastDone()     { return !s_block || vread(s_block->ackId) == vread(s_block->requestId); }
+	bool lastSucceeded() { return s_block && lastDone() && vread(s_block->status)==0; }
 
 	uint32_t heartbeat() { return s_block ? vread(s_block->addonHeartbeat) : 0; }
 
